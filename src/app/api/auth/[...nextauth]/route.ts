@@ -27,6 +27,13 @@ export const authOptions: AuthOptions = {
                         .eq("facebook_user_id", user.id)
                         .single();
 
+                    if (checkError && checkError.code !== 'PGRST116') {
+                        // PGRST116 = "No rows found" which is expected for new users
+                        // Any other error (like table not existing) - log but still allow login
+                        console.error("Supabase check error (non-fatal):", checkError);
+                        return true;
+                    }
+
                     if (!existingUser) {
                         // Create new user if they don't exist
                         const { error: insertError } = await supabaseAdmin.from("users").insert({
@@ -35,15 +42,16 @@ export const authOptions: AuthOptions = {
                             name: user.name,
                         });
                         if (insertError) {
-                            console.error("Error creating user in Supabase:", insertError);
-                            return false;
+                            // Log the error but still allow login - don't block the user
+                            console.error("Error creating user in Supabase (non-fatal):", insertError);
                         }
                     }
-                    // The user logs in successfully, you can also store long-lived tokens here if needed
+                    // Always allow login even if Supabase save fails
                     return true;
                 } catch (error) {
-                    console.error("Error on sign-in:", error);
-                    return false; // Reject sign in on error
+                    // Log error but still allow login
+                    console.error("Error on sign-in (non-fatal):", error);
+                    return true;
                 }
             }
             return true;
