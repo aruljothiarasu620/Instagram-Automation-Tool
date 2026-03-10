@@ -12,49 +12,37 @@ export default function ConnectInstagram() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [error, setError] = useState("");
   const [fetched, setFetched] = useState(false);
+  const [hasToken, setHasToken] = useState(true);
 
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
 
-  // Check URL for callback result
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const result = params.get("result");
-    if (result === "success") {
-      setError("");
-      fetchConnectedAccounts();
-    } else if (result === "error") {
-      setError("Failed to connect. Please try again.");
-    }
-  }, []);
-
-  const fetchConnectedAccounts = async () => {
+  const handleFetchAccounts = async () => {
+    setLoading(true);
+    setError("");
     try {
       const res = await fetch("/api/instagram/accounts");
       const data = await res.json();
-      if (data.accounts) setAccounts(data.accounts);
-      setFetched(true);
+
+      if (data.error === "no_token") {
+        setHasToken(false);
+        setError("You must log in with Facebook first to connect your Instagram account.");
+      } else if (data.error === "fb_error") {
+        setError(`Facebook error: ${data.message}`);
+      } else if (data.error) {
+        setError("Failed to fetch accounts. Please try again.");
+      } else if (data.accounts?.length === 0) {
+        setError("No Instagram Business accounts found. Make sure your Instagram account is a Business/Creator account and is linked to a Facebook Page.");
+        setFetched(true);
+      } else {
+        setAccounts(data.accounts || []);
+        setFetched(true);
+      }
     } catch {
-      setFetched(true);
+      setError("Network error. Please try again.");
     }
-  };
-
-  useEffect(() => {
-    if (status === "authenticated") fetchConnectedAccounts();
-  }, [status]);
-
-  const handleConnect = () => {
-    setLoading(true);
-    // Redirect to Facebook OAuth with Instagram permissions
-    const params = new URLSearchParams({
-      client_id: "869430439464685",
-      redirect_uri: `${window.location.origin}/api/instagram/callback`,
-      scope: "pages_show_list,instagram_basic,pages_read_engagement",
-      response_type: "code",
-      state: "connect_instagram",
-    });
-    window.location.href = `https://www.facebook.com/v18.0/dialog/oauth?${params}`;
+    setLoading(false);
   };
 
   if (status === "loading") {
@@ -65,10 +53,12 @@ export default function ConnectInstagram() {
     );
   }
 
+  const loggedInWithFacebook = !!(session as any)?.accessToken;
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <header className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
-        <Link href="/dashboard" className="text-gray-400 hover:text-white transition text-sm flex items-center gap-2">
+        <Link href="/dashboard" className="text-gray-400 hover:text-white transition text-sm">
           ← Back to Dashboard
         </Link>
         <span className="text-sm text-gray-400">{session?.user?.name}</span>
@@ -80,10 +70,19 @@ export default function ConnectInstagram() {
             📱
           </div>
           <h1 className="text-3xl font-bold mb-3">Connect Instagram Account</h1>
-          <p className="text-gray-400">
-            Connect a Facebook Page linked to your Instagram Business account.
+          <p className="text-gray-400 text-sm">
+            We fetch your Instagram Business accounts linked to your Facebook Pages.
           </p>
         </div>
+
+        {/* Not logged in with Facebook warning */}
+        {!loggedInWithFacebook && (
+          <div className="bg-yellow-900/30 border border-yellow-700/40 text-yellow-300 text-sm rounded-xl px-5 py-4 mb-6 text-center">
+            ⚠️ You are not logged in with Facebook. Please{" "}
+            <Link href="/login" className="underline hover:text-yellow-100">log out and sign in with Facebook</Link>{" "}
+            to connect your Instagram account.
+          </div>
+        )}
 
         {/* Error */}
         {error && (
@@ -95,7 +94,7 @@ export default function ConnectInstagram() {
         {/* Connected Accounts */}
         {accounts.length > 0 && (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6">
-            <h2 className="font-semibold text-lg mb-4 text-green-400">✅ Connected Accounts</h2>
+            <h2 className="font-semibold text-lg mb-4 text-green-400">✅ Found Instagram Accounts</h2>
             {accounts.map((acc: any) => (
               <div key={acc.ig_user_id} className="flex items-center gap-4 p-4 bg-gray-800 rounded-xl mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-lg">
@@ -103,54 +102,61 @@ export default function ConnectInstagram() {
                 </div>
                 <div>
                   <div className="font-medium">@{acc.ig_username}</div>
-                  <div className="text-xs text-gray-400">ID: {acc.ig_user_id}</div>
+                  <div className="text-xs text-gray-400">{acc.page_name} · {acc.followers?.toLocaleString()} followers</div>
                 </div>
-                <span className="ml-auto text-xs bg-green-900/50 text-green-400 border border-green-700/50 px-2 py-1 rounded-full">Connected</span>
+                <span className="ml-auto text-xs bg-green-900/50 text-green-400 border border-green-700/50 px-2 py-1 rounded-full">
+                  Connected ✓
+                </span>
               </div>
             ))}
           </div>
         )}
 
         {/* Requirements */}
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 text-left mb-6">
-          <h2 className="font-semibold text-lg mb-4">Requirements</h2>
-          <ul className="space-y-3">
-            {[
-              "An Instagram Business or Creator account",
-              "A Facebook Page linked to your Instagram account",
-              "Admin access to the Facebook Page",
-            ].map((req) => (
-              <li key={req} className="flex items-start gap-3 text-sm text-gray-300">
-                <span className="text-green-400 mt-0.5">✓</span>
-                {req}
-              </li>
-            ))}
-          </ul>
-        </div>
+        {!fetched && (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 mb-6 text-left">
+            <h2 className="font-semibold text-lg mb-4">Requirements</h2>
+            <ul className="space-y-3">
+              {[
+                "An Instagram Business or Creator account",
+                "A Facebook Page linked to your Instagram account",
+                "You must be logged in with Facebook (not email/password)",
+              ].map((req) => (
+                <li key={req} className="flex items-start gap-3 text-sm text-gray-300">
+                  <span className="text-green-400 mt-0.5">✓</span>
+                  {req}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
-        <button
-          onClick={handleConnect}
-          disabled={loading}
-          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-60 transition text-white rounded-xl px-6 py-4 font-semibold text-base shadow-lg shadow-purple-900/30 flex items-center justify-center gap-3"
-        >
-          {loading ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              Redirecting to Facebook...
-            </>
-          ) : (
-            <>
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
-              </svg>
-              Connect via Facebook
-            </>
-          )}
-        </button>
-
-        <p className="text-center text-xs text-gray-600 mt-4">
-          You will be redirected to Facebook to authorize access to your Pages and Instagram account.
-        </p>
+        {/* Action button */}
+        {loggedInWithFacebook ? (
+          <button
+            onClick={handleFetchAccounts}
+            disabled={loading}
+            className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-60 transition text-white rounded-xl px-6 py-4 font-semibold text-base flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Fetching your Instagram accounts...
+              </>
+            ) : fetched && accounts.length > 0 ? (
+              "Refresh Accounts"
+            ) : (
+              "Find My Instagram Accounts"
+            )}
+          </button>
+        ) : (
+          <Link
+            href="/login"
+            className="w-full block text-center bg-[#1877F2] hover:bg-[#166fe5] transition text-white rounded-xl px-6 py-4 font-semibold text-base"
+          >
+            Log in with Facebook to Connect
+          </Link>
+        )}
       </main>
     </div>
   );
