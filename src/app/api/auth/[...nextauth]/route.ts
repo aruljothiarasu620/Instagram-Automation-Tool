@@ -1,79 +1,89 @@
 import NextAuth, { AuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
 import FacebookProvider from "next-auth/providers/facebook";
-import { supabaseAdmin } from "@/lib/supabase";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export const authOptions: AuthOptions = {
     providers: [
+        // ── Email + Password Login ──
+        CredentialsProvider({
+            name: "Email & Password",
+            credentials: {
+                email: { label: "Email", type: "email", placeholder: "you@example.com" },
+                password: { label: "Password", type: "password" },
+            },
+            async authorize(credentials) {
+                if (!credentials?.email || !credentials?.password) return null;
+
+                // Sign in with Supabase Auth
+                const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+                    email: credentials.email,
+                    password: credentials.password,
+                });
+
+                if (error || !data.user) return null;
+
+                return {
+                    id: data.user.id,
+                    email: data.user.email,
+                    name: data.user.user_metadata?.name || data.user.email,
+                };
+            },
+        }),
+
+        // ── Facebook OAuth Login ──
         FacebookProvider({
             clientId: process.env.FACEBOOK_CLIENT_ID || "",
             clientSecret: process.env.FACEBOOK_CLIENT_SECRET || "",
             authorization: {
                 params: {
-                    // Requesting necessary scopes for Instagram Automation
-                    scope: "email,public_profile,instagram_basic,instagram_manage_comments,instagram_manage_insights,pages_show_list,pages_read_engagement",
+                    scope: "email,public_profile",
                 },
             },
         }),
     ],
+
+    pages: {
+        signIn: "/login",
+    },
+
     secret: process.env.NEXTAUTH_SECRET,
+
     callbacks: {
-        async signIn({ user, account, profile }) {
+        async signIn({ user, account }) {
             if (account?.provider === "facebook") {
+                // Upsert user in our users table
                 try {
-                    // Check if user already exists in our Supabase database
-                    const { data: existingUser, error: checkError } = await supabaseAdmin
-                        .from("users")
-                        .select("id")
-                        .eq("facebook_user_id", user.id)
-                        .single();
-
-                    if (checkError && checkError.code !== 'PGRST116') {
-                        // PGRST116 = "No rows found" which is expected for new users
-                        // Any other error (like table not existing) - log but still allow login
-                        console.error("Supabase check error (non-fatal):", checkError);
-                        return true;
-                    }
-
-                    if (!existingUser) {
-                        // Create new user if they don't exist
-                        const { error: insertError } = await supabaseAdmin.from("users").insert({
-                            facebook_user_id: user.id,
-                            email: user.email,
-                            name: user.name,
-                        });
-                        if (insertError) {
-                            // Log the error but still allow login - don't block the user
-                            console.error("Error creating user in Supabase (non-fatal):", insertError);
-                        }
-                    }
-                    // Always allow login even if Supabase save fails
-                    return true;
-                } catch (error) {
-                    // Log error but still allow login
-                    console.error("Error on sign-in (non-fatal):", error);
-                    return true;
+                    await supabaseAdmin.from("users").upsert(
+                        { facebook_user_id: user.id, email: user.email, name: user.name },
+                        { onConflict: "facebook_user_id" }
+                    );
+                } catch (e) {
+                    console.error("Supabase upsert error (non-fatal):", e);
                 }
             }
             return true;
         },
         async session({ session, token }) {
-            // Attach the provider's user ID to the session object
             if (session.user) {
                 (session.user as any).id = token.sub;
-                (session as any).accessToken = token.accessToken; // Passing the token for API usage if necessary
+                (session as any).accessToken = token.accessToken;
             }
             return session;
         },
         async jwt({ token, user, account }) {
-            // On initial sign in, attach the access token to the JWT token
             if (account) {
                 token.accessToken = account.access_token;
             }
             return token;
-        }
+        },
     },
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };
