@@ -3,6 +3,7 @@
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function Dashboard() {
   const { data: session, status } = useSession();
@@ -94,9 +95,9 @@ export default function Dashboard() {
                 Link your Instagram Business account to start automating.
               </p>
             </div>
-            <button className="mt-auto bg-purple-600 hover:bg-purple-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium">
+            <Link href="/dashboard/connect" className="mt-auto bg-purple-600 hover:bg-purple-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium text-center">
               Connect Account
-            </button>
+            </Link>
           </div>
 
           {/* Create Workflow */}
@@ -110,9 +111,9 @@ export default function Dashboard() {
                 Set up automation rules to auto-reply to comments and messages.
               </p>
             </div>
-            <button className="mt-auto bg-blue-600 hover:bg-blue-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium">
+            <Link href="/dashboard/workflows" className="mt-auto bg-blue-600 hover:bg-blue-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium text-center">
               Create Workflow
-            </button>
+            </Link>
           </div>
 
           {/* View Analytics */}
@@ -126,9 +127,9 @@ export default function Dashboard() {
                 Track your Instagram engagement, reach, and post performance.
               </p>
             </div>
-            <button className="mt-auto bg-green-600 hover:bg-green-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium">
+            <Link href="/dashboard/analytics" className="mt-auto bg-green-600 hover:bg-green-500 transition text-white rounded-xl px-4 py-2 text-sm font-medium text-center">
               View Analytics
-            </button>
+            </Link>
           </div>
         </div>
 
